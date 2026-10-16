@@ -19,20 +19,31 @@ let submitting = false;
 const isAdmin = location.pathname.replace(/\/$/,'') === '/admin';
 const icon = (name) => ({heart:'♡',yes:'♥',no:'×',arrow:'→',back:'←',spark:'✳'}[name]);
 const esc = (s) => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const layout = (content,admin=false) => `<div class="site"><header class="topbar"><a href="/" class="wordmark">norma<span class="dot">.</span></a><span class="topright">${admin?'PRIVATE RESULTS':'THE SWEATER EDIT'}</span></header><main>${content}</main><footer>made with love, yarn & a little indecision <span>✳</span></footer></div>`;
+const layout = (content,admin=false) => `<div class="site"><main>${content}</main></div>`;
 function photo(item,cls='',eager=false){return `<img class="${cls}" src="${item.local}" data-remote="${esc(item.remote)}" alt="Sweater color combination ${item.id}" ${eager?'fetchpriority="high"':'loading="lazy"'} />`;}
-function bindImages(){document.querySelectorAll('img[data-remote]').forEach(img=>{img.addEventListener('error',()=>{if(img.dataset.fallback!=='yes'){img.dataset.fallback='yes';img.src=img.dataset.remote;}else{img.classList.add('broken');img.insertAdjacentHTML('afterend','<p class="image-error">Image unavailable. Please ask the organizer to upload the image.</p>');if(img.closest('.vote-stage'))document.querySelectorAll('.vote-button').forEach(b=>b.disabled=true);}});});}
+function bindImages(){
+ document.querySelectorAll('img[data-remote]').forEach(img=>{
+   img.addEventListener('error',()=>{
+     if(img.dataset.fallback!=='yes'){
+       img.dataset.fallback='yes';img.src=img.dataset.remote;
+     } else {
+       img.classList.add('broken');
+       const parent=img.parentElement;
+       if(!parent.querySelector('.image-error')) parent.insertAdjacentHTML('beforeend','<div class="image-error"><strong>Image not available</strong><p>This sweater preview needs to be uploaded by the organizer.</p><button type="button" class="retry-image">Try again</button></div>');
+       parent.querySelector('.retry-image').onclick=()=>{img.dataset.fallback='';img.classList.remove('broken');parent.querySelector('.image-error')?.remove();img.src=img.dataset.remote+'?retry='+Date.now();};
+       if(img.closest('.vote-stage')) document.querySelectorAll('.vote-button').forEach(b=>b.disabled=true);
+     }
+   });
+ });
+}
 function welcome(){
- app.innerHTML=layout(`<section class="hero"><div class="eyebrow"><span class="line"></span> A VERY IMPORTANT KNITTING DECISION <span class="line"></span></div><h1>Help me pick<br/>my <em>stripes.</em></h1><p class="intro">I'm knitting the Norma sweater, and I need your excellent taste. The sweater will have a soft, natural-colored base with two stripe colors. I've narrowed it down to 20 possibilities.</p><div class="hero-photos"><img src="/reference/norma1.jpeg" alt="A finished striped Norma sweater"/><img src="/reference/norma2.jpg" alt="Norma sweater inspiration with bright stripes"/><img src="/reference/norma3.jpg" alt="Full-length styling of the Norma sweater"/></div><p class="instructions">You'll see one sweater at a time. Just vote <strong>love it</strong> or <strong>not for me</strong>. No overthinking necessary.</p><button class="primary start" id="start">Let's do this <span>→</span></button><p class="fineprint">20 quick votes · about 2 minutes · anonymous</p></section>`);
+ app.innerHTML=layout(`<section class="hero"><div class="hero-copy"><p class="kicker">A LITTLE KNITTING POLL</p><h1>Help me choose<br>my sweater stripes.</h1><p class="intro">I'm making the Norma sweater with a natural-colored base and two stripe colors. I've narrowed it down to 20 combinations, and I'd love your opinion.</p><p class="instructions">You'll see one sweater at a time. Give each a thumbs up or thumbs down. That's it.</p><button class="primary start" id="start">Start voting <span aria-hidden="true">→</span></button><p class="fineprint">20 combinations · about 2 minutes · anonymous</p></div><div class="hero-photos"><img src="/reference/norma1.jpeg" alt="Norma sweater reference photo one"/><img src="/reference/norma2.jpg" alt="Norma sweater reference photo two"/><img src="/reference/norma3.jpg" alt="Norma sweater reference photo three"/></div></section>`);
  document.querySelector('#start').onclick=()=>{current=combos.findIndex(c=>answers[c.id]===undefined);if(current<0)current=19;renderVote();};
 }
 function renderVote(){
- const c=combos[current]; const count=Object.keys(answers).length;
- app.innerHTML=layout(`<section class="vote-stage"><div class="vote-top"><span class="eyebrow">THE COLOR LINEUP</span><span class="counter">${current+1} <span>/ 20</span></span></div><div class="progress"><div style="width:${count/20*100}%"></div></div><h1>What do you <em>think?</em></h1><p class="vote-sub">Could you see this on my sweater?</p><div class="sweater-frame">${photo(c,'sweater',true)}</div><div class="vote-actions"><button class="vote-button no ${answers[c.id]===false?'selected':''}" id="no" aria-label="No, not this one"><span class="vote-icon">👎</span><span>Not for me</span></button><button class="vote-button yes ${answers[c.id]===true?'selected':''}" id="yes" aria-label="Yes, love this one"><span class="vote-icon">👍</span><span>Love it!</span></button></div><div class="vote-bottom"><button class="back" id="back" ${current===0?'disabled':''}>← Previous</button><span>${count} of 20 voted</span></div><p class="vote-hint">Your choices are saved as you go.</p></section>`);
- bindImages();
- document.querySelector('#no').onclick=()=>vote(false);
- document.querySelector('#yes').onclick=()=>vote(true);
- document.querySelector('#back').onclick=()=>{if(current>0){current--;renderVote();}};
+ const c=combos[current];const count=Object.keys(answers).length;
+ app.innerHTML=layout(`<section class="vote-stage"><div class="vote-top"><button class="back" id="back" ${current===0?'disabled':''}>← Back</button><span class="counter">${current+1} of 20</span></div><div class="progress" role="progressbar" aria-label="Voting progress" aria-valuenow="${count}" aria-valuemin="0" aria-valuemax="20"><div style="width:${count/20*100}%"></div></div><div class="vote-prompt">Would you wear these stripes?</div><div class="sweater-frame">${photo(c,'sweater',true)}</div><div class="vote-actions"><button class="vote-button no ${answers[c.id]===false?'selected':''}" id="no" aria-label="Thumbs down"><span class="vote-icon">👎</span><span>No</span></button><button class="vote-button yes ${answers[c.id]===true?'selected':''}" id="yes" aria-label="Thumbs up"><span class="vote-icon">👍</span><span>Yes</span></button></div><p class="vote-hint">${count} of 20 answered · You can go back and change a vote</p></section>`);
+ bindImages();document.querySelector('#no').onclick=()=>vote(false);document.querySelector('#yes').onclick=()=>vote(true);document.querySelector('#back').onclick=()=>{if(current>0){current--;renderVote();}};
 }
 function vote(value){answers[combos[current].id]=value;localStorage.setItem(answersKey,JSON.stringify(answers));if(current<19){current++;renderVote();}else review();}
 function review(){const n=Object.keys(answers).length;if(n<20){current=combos.findIndex(c=>answers[c.id]===undefined);renderVote();return;}
