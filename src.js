@@ -1,6 +1,7 @@
 import './style.css';
 import { createClient } from '@supabase/supabase-js';
 import raw from './combinations.json';
+import { norma1, norma2, norma3 } from './reference-photos.js';
 
 const combos = raw.map(([a,b,blob,hash],i) => ({
   id: i+1, a, b,
@@ -37,7 +38,7 @@ function bindImages(){
  });
 }
 function welcome(){
- app.innerHTML=layout(`<section class="hero"><div class="hero-copy"><p class="kicker">A LITTLE KNITTING POLL</p><h1>Help me choose<br>my sweater stripes.</h1><p class="intro">I'm making the Norma sweater with a natural-colored base and two stripe colors. I've narrowed it down to 20 combinations, and I'd love your opinion.</p><p class="instructions">You'll see one sweater at a time. Give each a thumbs up or thumbs down. That's it.</p><button class="primary start" id="start">Start voting <span aria-hidden="true">→</span></button><p class="fineprint">20 combinations · about 2 minutes · anonymous</p></div><div class="hero-photos"><img src="/reference/norma1.jpeg" alt="Norma sweater reference photo one"/><img src="/reference/norma2.jpg" alt="Norma sweater reference photo two"/><img src="/reference/norma3.jpg" alt="Norma sweater reference photo three"/></div></section>`);
+ app.innerHTML=layout(`<section class="hero"><div class="hero-copy"><p class="kicker">A LITTLE KNITTING POLL</p><h1>Help me choose<br>my sweater stripes.</h1><p class="intro">I'm making the Norma sweater with a natural-colored base and two stripe colors. I've narrowed it down to 20 combinations, and I'd love your opinion.</p><p class="instructions">You'll see one sweater at a time. Give each a thumbs up or thumbs down. That's it.</p><button class="primary start" id="start">Start voting <span aria-hidden="true">→</span></button><p class="fineprint">20 combinations · about 2 minutes · anonymous</p></div><div class="hero-photos"><img src="${norma1}" alt="Norma sweater reference photo one"/><img src="${norma2}" alt="Norma sweater reference photo two"/><img src="${norma3}" alt="Norma sweater reference photo three"/></div></section>`);
  document.querySelector('#start').onclick=()=>{current=combos.findIndex(c=>answers[c.id]===undefined);if(current<0)current=19;renderVote();};
 }
 function renderVote(){
@@ -56,7 +57,7 @@ async function submit(){if(submitting)return;const status=document.querySelector
  try{const {error}=await db.rpc('submit_ballot',{p_votes:votes});if(error)throw error;localStorage.setItem(completedKey,'true');localStorage.removeItem(answersKey);thanks();}
  catch(e){status.textContent='Could not submit. Your choices are saved on this device. Please try again.';console.error(e);document.querySelector('#send').disabled=false;}finally{submitting=false;}
 }
-function thanks(){app.innerHTML=layout(`<section class="finish"><div class="big-spark">♥</div><div class="eyebrow">YOU'RE THE BEST</div><h1>Thank <em>you!</em></h1><p>Your votes have been counted. You've officially made my sweater decision a little easier.</p><div class="thank-photo"><img src="/reference/norma2.jpg" alt="The Norma sweater inspiration"/></div><p class="closing">Now, back to the knitting needles. ♡</p></section>`);}
+function thanks(){app.innerHTML=layout(`<section class="finish"><div class="big-spark">♥</div><div class="eyebrow">YOU'RE THE BEST</div><h1>Thank <em>you!</em></h1><p>Your votes have been counted. You've officially made my sweater decision a little easier.</p><div class="thank-photo"><img src="${norma2}" alt="The Norma sweater inspiration"/></div><p class="closing">Now, back to the knitting needles. ♡</p></section>`);}
 async function admin(){
  if(!db){app.innerHTML=layout(`<section class="admin-wrap"><h1>Organizer <em>dashboard.</em></h1><p>Connect Supabase to enable sign-in and results. See README.md.</p></section>`,true);return;}
  const {data:{session}}=await db.auth.getSession();if(!session){
@@ -71,4 +72,30 @@ async function admin(){
  document.querySelector('#results').innerHTML=`<div class="results-grid">${ordered.map((c,index)=>{const r=byId.get(c.id)||{};const yes=Number(r.yes_count||0),no=Number(r.no_count||0);const percent=yes+no?Math.round(100*yes/(yes+no)):0;return `<article class="result-card"><div class="result-img">${photo(c)}</div><div class="result-info"><div class="result-index">#${c.id} ${index===0&&yes>0?'<span>· MOST LOVED</span>':''}</div><h2>${esc(c.a)} <span>+</span><br/>${esc(c.b)}</h2><div class="result-numbers"><span class="yes-text">♥ ${yes} yes</span><span class="no-text">× ${no} no</span></div><div class="result-bar"><div style="width:${percent}%"></div></div><div class="result-percent">${percent}% yes</div></div></article>`;}).join('')}</div>`;
  bindImages();
 }
-if(isAdmin)admin();else if(localStorage.getItem(completedKey)==='true')thanks();else welcome();
+
+function imageDiagnostic(){
+ app.innerHTML=layout(`<section class="admin-wrap"><h1>Image <em>check.</em></h1><p>This checks the same local and fallback image URLs as the voting screens. It doesn't change any votes.</p><p id="diag-status" role="status">Checking 20 combinations…</p><button class="small-btn" id="copy-report" disabled>Copy report</button><div id="diag-results"></div></section>`);
+ const results=[];
+ const timeout=12000;
+ const check=(url)=>new Promise(resolve=>{
+  const img=new Image();let done=false;
+  const finish=(ok)=>{if(done)return;done=true;clearTimeout(timer);img.onload=null;img.onerror=null;resolve(ok);};
+  const timer=setTimeout(()=>finish(false),timeout);
+  img.onload=()=>finish(true);img.onerror=()=>finish(false);img.src=url;
+ });
+ Promise.all(combos.map(async c=>{
+  const local=await check(c.local);
+  const remote=local?null:await check(c.remote);
+  return {id:c.id,a:c.a,b:c.b,status:local?'OK (local)':remote?'OK (fallback)':'BROKEN',remote:c.remote};
+ })).then(rows=>{
+  rows.sort((a,b)=>a.id-b.id);
+  const broken=rows.filter(r=>r.status==='BROKEN');
+  document.querySelector('#diag-status').textContent=`${rows.length-broken.length} working · ${broken.length} broken`;
+  document.querySelector('#diag-results').innerHTML=rows.map(r=>`<p style="margin:10px 0"><strong>#${r.id}: ${esc(r.a)} + ${esc(r.b)}</strong> — ${esc(r.status)}</p>`).join('');
+  const report=rows.map(r=>`#${r.id}: ${r.a} + ${r.b} — ${r.status}${r.status==='BROKEN'?' — '+r.remote:''}`).join('\n');
+  document.querySelector('#copy-report').disabled=false;
+  document.querySelector('#copy-report').onclick=()=>navigator.clipboard.writeText(report).then(()=>{document.querySelector('#copy-report').textContent='Copied!';}).catch(()=>{const ta=document.createElement('textarea');ta.value=report;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();});
+ });
+}
+
+if(location.pathname.replace(/\/$/,'')==='/image-check')imageDiagnostic();else if(isAdmin)admin();else if(localStorage.getItem(completedKey)==='true')thanks();else welcome();
