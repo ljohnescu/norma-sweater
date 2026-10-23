@@ -6,7 +6,7 @@ import { norma1, norma2, norma3 } from './reference-photos.js';
 const combos = raw.map(([a,b,blob,hash],i) => ({
   id: i+1, a, b,
   remote: `https://codahosted.io/docs/gBZFlRwMm-/blobs/${blob}/${hash}`,
-  local: `/combinations/${i+1}.png`
+  local: `/combinations/${i+1}.webp`
 }));
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
