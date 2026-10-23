@@ -14,6 +14,27 @@ const db = url && key ? createClient(url,key) : null;
 const app = document.querySelector('#app');
 const answersKey = 'norma-vote-draft-v1';
 const completedKey = 'norma-vote-completed-v1';
++const orderKey = 'norma-vote-order-v1';
++// Store only combination IDs: votes always remain tied to their original IDs.
++function votingOrder(){
++ const saved = JSON.parse(localStorage.getItem(orderKey) || 'null');
++ const ids = combos.map(c=>c.id);
++ if(Array.isArray(saved) && saved.length===ids.length &&
++    new Set(saved).size===ids.length && saved.every(id=>ids.includes(id))){
++   return saved.map(id=>combos.find(c=>c.id===id));
++ }
++ // Fisher-Yates shuffle, generated once per browser for this ballot.
++ const shuffled=[...combos];
++ for(let i=shuffled.length-1;i>0;i--){
++   const j=Math.floor(Math.random()*(i+1));
++   [shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]];
++ }
++ localStorage.setItem(orderKey,JSON.stringify(shuffled.map(c=>c.id)));
++ return shuffled;
++}
++let ballotCombos = null;
++function getBallotCombos(){return ballotCombos ||= votingOrder();}
+
 let answers = JSON.parse(localStorage.getItem(answersKey) || '{}');
 let current = 0;
 let submitting = false;
@@ -39,22 +60,22 @@ function bindImages(){
 }
 function welcome(){
  app.innerHTML=layout(`<section class="hero"><div class="hero-copy"><p class="kicker">A LITTLE KNITTING POLL</p><h1>Help me choose<br>my sweater stripes</h1><p class="intro">I'm making the Norma Sweater by My Favorite Things Knitwear with a natural-colored base and two stripe colors. I've narrowed it down to 20 combinations, and I'd love your opinion.</p><p class="instructions">You'll see one sweater at a time. Give each a thumbs up or thumbs down. That's it!</p><button class="primary start" id="start">Start voting <span aria-hidden="true">→</span></button><p class="fineprint">20 combinations · about 2 minutes · anonymous</p></div><div class="hero-photos"><img src="${norma1}" alt="Norma sweater reference photo one"/><img src="${norma2}" alt="Norma sweater reference photo two"/><img src="${norma3}" alt="Norma sweater reference photo three"/></div></section>`);
- document.querySelector('#start').onclick=()=>{current=combos.findIndex(c=>answers[c.id]===undefined);if(current<0)current=19;renderVote();};
+ document.querySelector('#start').onclick=()=>{current=getBallotCombos().findIndex(c=>answers[c.id]===undefined);if(current<0)current=19;renderVote();};
 }
 function renderVote(){
- const c=combos[current];const count=Object.keys(answers).length;
+ const c=getBallotCombos()[current];const count=Object.keys(answers).length;
  app.innerHTML=layout(`<section class="vote-stage"><div class="vote-top"><button class="back" id="back" ${current===0?'disabled':''}>← Back</button><span class="counter">${current+1} of 20</span></div><div class="progress" role="progressbar" aria-label="Voting progress" aria-valuenow="${count}" aria-valuemin="0" aria-valuemax="20"><div style="width:${count/20*100}%"></div></div><div class="vote-prompt">Do you like these stripes?</div><div class="sweater-frame">${photo(c,'sweater',true)}</div><div class="vote-actions"><button class="vote-button no ${answers[c.id]===false?'selected':''}" id="no" aria-label="Thumbs down"><span class="vote-icon">👎</span><span>No</span></button><button class="vote-button yes ${answers[c.id]===true?'selected':''}" id="yes" aria-label="Thumbs up"><span class="vote-icon">👍</span><span>Yes</span></button></div><p class="vote-hint">${count} of 20 answered · You can go back and change a vote</p></section>`);
  bindImages();document.querySelector('#no').onclick=()=>vote(false);document.querySelector('#yes').onclick=()=>vote(true);document.querySelector('#back').onclick=()=>{if(current>0){current--;renderVote();}};
 }
-function vote(value){answers[combos[current].id]=value;localStorage.setItem(answersKey,JSON.stringify(answers));if(current<19){current++;renderVote();}else review();}
-function review(){const n=Object.keys(answers).length;if(n<20){current=combos.findIndex(c=>answers[c.id]===undefined);renderVote();return;}
+function vote(value){answers[getBallotCombos()[current].id]=value;localStorage.setItem(answersKey,JSON.stringify(answers));if(current<19){current++;renderVote();}else review();}
+function review(){const n=Object.keys(answers).length;if(n<20){current=getBallotCombos().findIndex(c=>answers[c.id]===undefined);renderVote();return;}
  app.innerHTML=layout(`<section class="finish"><div class="big-spark">✳</div><div class="eyebrow">ONE LAST THING</div><h1>All <em>done!</em></h1><p>You've voted on all 20 sweaters. Ready to send your choices?</p><div class="finish-stat"><strong>${Object.values(answers).filter(Boolean).length}</strong> loved <span>·</span> <strong>${Object.values(answers).filter(v=>!v).length}</strong> passed</div><button class="primary" id="send" ${submitting?'disabled':''}>Submit my votes →</button><button class="back" id="edit">← Review my choices</button><p id="status" class="status" role="status"></p></section>`);
  document.querySelector('#edit').onclick=()=>{current=0;renderVote();};document.querySelector('#send').onclick=submit;
 }
 async function submit(){if(submitting)return;const status=document.querySelector('#status');if(!db){status.textContent='Voting is not connected yet. The organizer needs to set up Supabase first.';return;}
  submitting=true;document.querySelector('#send').disabled=true;status.textContent='Sending your votes…';
  const votes=combos.map(c=>({id:c.id,yes:answers[c.id]}));
- try{const {error}=await db.rpc('submit_ballot',{p_votes:votes});if(error)throw error;localStorage.setItem(completedKey,'true');localStorage.removeItem(answersKey);thanks();}
+ try{const {error}=await db.rpc('submit_ballot',{p_votes:votes});if(error)throw error;localStorage.setItem(completedKey,'true');localStorage.removeItem(answersKey);localStorage.removeItem(orderKey);thanks();}
  catch(e){status.textContent='Could not submit. Your choices are saved on this device. Please try again.';console.error(e);document.querySelector('#send').disabled=false;}finally{submitting=false;}
 }
 function thanks(){app.innerHTML=layout(`<section class="finish"><div class="big-spark">♥</div><div class="eyebrow">YOU'RE THE BEST</div><h1>Thank <em>you!</em></h1><p>Your votes have been counted. You've officially made my sweater decision a little easier.</p><div class="thank-photo"><img src="${norma2}" alt="The Norma sweater inspiration"/></div><p class="closing">Now, back to the knitting needles. ♡</p></section>`);}
